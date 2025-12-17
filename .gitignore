@@ -1,0 +1,2 @@
+# obviously ignore environment variable files
+*.env
