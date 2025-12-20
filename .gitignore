@@ -1,2 +1,5 @@
 # obviously ignore environment variable files
 *.env
+
+#Dependencies (Duh!)
+node_modules/
