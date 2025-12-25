@@ -3,3 +3,9 @@
 
 #Dependencies (Duh!)
 node_modules/
+lib/
+
+#Build Artifacts & cache
+out/
+broadcast/
+cache/
