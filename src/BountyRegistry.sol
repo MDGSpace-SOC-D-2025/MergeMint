@@ -17,7 +17,8 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
 
     // 6 months in seconds (180 days)
     uint256 public constant REFUND_TIMELOCK = 180 days;
-
+    
+    // Tracks the status of bounties created
     enum BountyStatus { 
         OPEN,       // 0: Deposited, waiting for work
         VERIFYING,  // 1: Contributor claimed, Oracle is checking (Locks funds)
@@ -25,6 +26,7 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
         REFUNDED    // 3: Timelock expired, issuer reclaimed funds
     }
 
+    // Special struct to store vital information of bounties created
     struct Bounty {
         address issuer;       // The maintainer who deposited funds
         address token;        // The ERC20 token address
@@ -34,14 +36,11 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
         string prAuthor;      // The GitHub username who claimed it
     }
 
-    struct IssueParams {
-        string repoOwner;
-        string repoName;
-        string issueNumber;
-    }
-
+    // Mapping of bountyID to Bounty struct
     mapping(bytes32 => Bounty) public bounties;
 
+
+    // --- Events ---
     event BountyCreated(
         bytes32 indexed bountyId,
         string repoOwner,
@@ -55,26 +54,30 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
     event BountyStatusChanged(bytes32 indexed bountyId, BountyStatus newStatus);
     event FundsWithdrawn(bytes32 indexed bountyId, address indexed recipient, uint256 amount);
 
+    // --- Constructor ---
     constructor() Ownable(msg.sender) {}
 
     /**
      * @notice Funds a specific GitHub issue.
      * @dev Sets state to OPEN.
      */
-    function fundIssue(
+    function fundIssue (
         address _token,
         uint256 _amount,
-        IssueParams calldata _params
+        string memory repoOwner,
+        string memory repoName,
+        string memory issueID
     ) external nonReentrant {
-        require(_amount > 0, "Amount must be greater than 0");
-        require(_token != address(0), "Invalid token address");
+        // Basic requirements for bounty to be created
+        require(_token != address(0), "Token must exist!!");
+        require(_amount > 0, "Bounty must have value more than 0!!");
 
-        bytes32 bountyId = computeBountyId(_params.repoOwner, _params.repoName, _params.issueNumber);
-        require(bounties[bountyId].amount == 0, "Bounty already exists for this issue");
+        // Creates a unique bountyID for unique issue with given params
+        bytes32 bountyID = keccak256(abi.encodePacked(repoOwner, repoName, issueID));
+        require(bounties[bountyID].amount == 0, "Bounty for this issue already exists");
 
-        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-
-        bounties[bountyId] = Bounty({
+        // Maps newly created bountyID to a Bounty struct to keep track
+        bounties[bountyID] = Bounty({
             issuer: msg.sender,
             token: _token,
             amount: _amount,
@@ -83,15 +86,11 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
             prAuthor: ""
         });
 
-        emit BountyCreated(
-            bountyId, 
-            _params.repoOwner, 
-            _params.repoName, 
-            _params.issueNumber, 
-            msg.sender, 
-            _token, 
-            _amount
-        );
+        // Transfers the amount from the maintainer to this contract.
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+
+        // Emits event for the newly funded bounty
+        emit BountyCreated(bountyID, repoOwner, repoName, issueID, msg.sender, _token, _amount);
     }
 
     /**
@@ -129,21 +128,13 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
         Bounty storage bounty = bounties[_bountyId];
         require(bounty.status == BountyStatus.OPEN, "Bounty not available");
         
-        // In Week 3, this will call the Oracle.
+        // This function will eventually interact with the oracle to change status
         // For now, we simulate the state change lock.
         bounty.status = BountyStatus.VERIFYING;
         emit BountyStatusChanged(_bountyId, BountyStatus.VERIFYING);
     }
 
-    function computeBountyId(
-        string memory _repoOwner,
-        string memory _repoName,
-        string memory _issueNumber
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_repoOwner, _repoName, _issueNumber));
-    }
-
-    // Admin emergency function (distinct from user sweepFunds)
+    // Admin emergency function (different from user sweepFunds)
     function emergencySweep(address _token, uint256 _amount) external onlyOwner {
          IERC20(_token).safeTransfer(msg.sender, _amount);
     }
