@@ -2,65 +2,118 @@
 pragma solidity ^0.8.19;
 
 // -- Imports --
-
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
-contract Oracle is FunctionsClient {
+// -- Interface --
+interface IBountyRegistry {
+    function completeBountyPayout(
+        bytes32 bountyId,
+        address recipient,
+        string calldata githubUsername
+    ) external;
+}
+
+contract IntegratedOracle is FunctionsClient {
     using FunctionsRequest for FunctionsRequest.Request;
 
-    // -- State variables --
+    // --- Configuration ---
     address public router;
     bytes32 public donId;
     uint64 public subscriptionId;
     uint32 public gasLimit = 300000;
-    string public sourceCode; // JavaScript source code for verification
-    mapping(bytes32 => bool) public activeRequests; // Mapping to keep track of active requests
+    string public sourceCode;
+    
+    // Reference to the Bounty Vault
+    IBountyRegistry public bountyRegistry;
+    address public owner;
 
-    // --Events--
-    // 1. Event to track Verificaiton of requests
-    event VerificationResult(bytes32 indexed requestId, bool success, string author);
+    // --- Request Tracking ---
+    struct VerificationRequest {
+        bytes32 bountyId;      // Which bounty is being verified
+        address claimant;      // Who initiated the claim
+        bool active;           // Prevents replay attacks
+    }
 
-    // --Errors--
-    error UnexpectedRequestID(bytes32 requestId);   
+    mapping(bytes32 => VerificationRequest) public requests;
 
-    // --Constructor--
-    constructor(address _router, bytes32 _donId, uint64 _subId, string memory _source) FunctionsClient(_router) {
+    // --- Events ---
+    event ClaimInitiated(
+        bytes32 indexed requestId,
+        bytes32 indexed bountyId,
+        address indexed claimant,
+        string prNumber
+    );
+
+    event VerificationComplete(
+        bytes32 indexed requestId,
+        bytes32 indexed bountyId,
+        bool verified,
+        string author
+    );
+
+    event PayoutTriggered(
+        bytes32 indexed bountyId,
+        address indexed recipient,
+        string githubUsername
+    );
+
+    // --- Errors ---
+    error UnexpectedRequestID(bytes32 requestId);
+    error Unauthorized();
+    error InvalidBountyId();
+
+    // --- Modifiers ---
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
+
+    // -- Constructor -- 
+    constructor(
+        address _router,
+        bytes32 _donId,
+        uint64 _subId,
+        string memory _source,
+        address _bountyRegistry
+    ) FunctionsClient(_router) {
         router = _router;
         donId = _donId;
         subscriptionId = _subId;
         sourceCode = _source;
+        bountyRegistry = IBountyRegistry(_bountyRegistry); // Letting this contract know bountyregistry exists
+        owner = msg.sender;
     }
 
-    // --Functions--
-    // 1. Verifies the contribution claim made by contributor
-    /*
-     * Triggers the Oracle to verify a GitHub PR
-     * @param owner The GitHub owner (e.g. "vihaan1016")
-     * @param repo The GitHub repo (e.g. "MergeMint")
-     * @param prNumber The PR number as a string (e.g. "42")
-     * @param issueId The Issue ID to verify against (e.g. "101")
+    // -- Functions --
+    /**
+     * @notice Initializes claim verification for a bounty
+     * @dev Called by BountyRegistry when a contributor claims a bounty
+     * @param bountyId The unique identifier for the bounty
+     * @param claimant The address claiming the bounty
+     * @param args [repoOwner, repoName, prNumber, issueNumber]
+     * @param slotId DON hosted secrets slot ID
+     * @param version DON hosted secrets version
      */
     function verifyContribution(
-        string[] calldata args, // [owner, repo, prNumber, issueId]
-        uint8 donHostedSecretsSlotID, 
-        uint64 donHostedSecretsVersion
+        bytes32 bountyId,
+        address claimant,
+        string[] calldata args,
+        uint8 slotId,
+        uint64 version
     ) external returns (bytes32 requestId) {
+        // Only allow calls from BountyRegistry
+        if (msg.sender != address(bountyRegistry)) revert Unauthorized();
+        if (bountyId == bytes32(0)) revert InvalidBountyId();
+
+        // Build Chainlink Functions request
         FunctionsRequest.Request memory req;
-        
-        // Initialize the request object with the stored JavaScript source code.
         req.initializeRequestForInlineJavaScript(sourceCode);
         
-        
-        // Add the arguments for the JS script
         if (args.length > 0) req.setArgs(args);
-        
-        // Add secrets (GitHub Token) reference
-        if (donHostedSecretsVersion > 0) {
-            req.addDONHostedSecrets(donHostedSecretsSlotID, donHostedSecretsVersion);
-        }
+        if (version > 0) req.addDONHostedSecrets(slotId, version);
 
-        // Send request to Chainlink DON
+        // Send to Chainlink DON
         requestId = _sendRequest(
             req.encodeCBOR(),
             subscriptionId,
@@ -68,40 +121,63 @@ contract Oracle is FunctionsClient {
             donId
         );
 
-        // Set the requestID to active
-        activeRequests[requestId] = true;
+        // Track this request
+        requests[requestId] = VerificationRequest({
+            bountyId: bountyId,
+            claimant: claimant,
+            active: true
+        });
+
+        emit ClaimInitiated(requestId, bountyId, claimant, args[2]);
         return requestId;
     }
 
-    // 2. Function to execute the result of the verification.js file
-    /*
-     * @notice Callback function called by the Chainlink DON
+    /**
+     * @notice Chainlink DON callback - processes verification results
+     * @dev Automatically called by Chainlink when verification completes
      */
     function fulfillRequest(
         bytes32 requestId,
         bytes memory response,
         bytes memory err
     ) internal override {
+        VerificationRequest storage request = requests[requestId];
+        
+        if (!request.active) revert UnexpectedRequestID(requestId);
+        request.active = false;
 
-        // Checks if false requests are not made
-        if (!activeRequests[requestId]) {
-            revert UnexpectedRequestID(requestId);
-        }
-
-        // Renders the requesID inactive meaning it has been executed on DON
-        activeRequests[requestId] = false;
-
-        // Simple error handling if the verification results in the error (not referencing to claim errors)
+        // Handle script errors
         if (err.length > 0) {
-            // Handle error (e.g. emit event or retry logic)
-            emit VerificationResult(requestId, false, "ERROR_IN_SCRIPT");
+            emit VerificationComplete(requestId, request.bountyId, false, "SCRIPT_ERROR");
+            // Bounty remains in VERIFYING state
             return;
         }
 
-        // DECODE: This is the gas efficient part where we decode response into solidity readable bytes
+        // Decode Oracle response: (bool verified, string memory githubUsername)
         (bool verified, string memory author) = abi.decode(response, (bool, string));
 
-        // Tracks the result of request made by contributor (irrespective of true/false)
-        emit VerificationResult(requestId, verified, author);
+        emit VerificationComplete(requestId, request.bountyId, verified, author);
+
+        // If verification passed, trigger payout
+        if (verified) {
+            bountyRegistry.completeBountyPayout(
+                request.bountyId,
+                request.claimant,
+                author
+            );
+            
+            emit PayoutTriggered(request.bountyId, request.claimant, author);
+        }
+        // If verification failed, bounty returns to OPEN state (handled in Registry)
+    }
+
+    // --- Admin Functions ---
+
+    function updateBountyRegistry(address _newRegistry) external onlyOwner {
+        bountyRegistry = IBountyRegistry(_newRegistry);
+    }
+
+    function updateSourceCode(string memory _newSource) external onlyOwner {
+        sourceCode = _newSource;
     }
 }

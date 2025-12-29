@@ -1,48 +1,61 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+// --Imports--
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol"; 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-/**
- * @title BountyRegistry
- * @notice The "Vault" that holds crypto assets for Open Source issues.
- */
-contract BountyRegistry is ReentrancyGuard, Ownable {
+// -- Interface --
+interface IOracle {
+    function verifyContribution(
+        bytes32 bountyID,
+        address claimer,
+        string[] calldata args,
+        uint8 slotId,
+        uint64 version
+    ) external returns (bytes32 requestId);
+}
+
+contract BountyRegistry is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    // --- State Variables ---
-
-    // 6 months in seconds (180 days)
-    uint256 public constant REFUND_TIMELOCK = 180 days;
+    // -- State Variable --
+    IOracle public oracle;
     
-    // Tracks the status of bounties created
-    enum BountyStatus { 
-        OPEN,       // 0: Deposited, waiting for work
-        VERIFYING,  // 1: Contributor claimed, Oracle is checking (Locks funds)
-        PAID,       // 2: Work verified, funds sent
-        REFUNDED    // 3: Timelock expired, issuer reclaimed funds
+    // Tracking the bounty status
+    enum BountyStatus {
+        OPEN,
+        VERIFYING,
+        PAID,
+        REFUNDED
     }
 
-    // Special struct to store vital information of bounties created
+    // Special struct that each bounty must have and easy to track
     struct Bounty {
-        address issuer;       // The maintainer who deposited funds
-        address token;        // The ERC20 token address
-        uint256 amount;       // Amount deposited
-        BountyStatus status;  // Current lifecycle state
-        uint256 creationTime; // Used for refund timelocks
-        string prAuthor;      // The GitHub username who claimed it
+        address issuer;
+        address token;
+        uint256 amount;
+        BountyStatus status;
+        uint256 creationTime;
+        string prClaimer;
+        bytes32 activeRequestID;
     }
 
-    // Mapping of bountyID to Bounty struct
+    // Minimum time for refund 
+    uint256 REFUND_TIMELOCK = 180 days;
+
+    // Secrets
+    uint8 public secretsSlotID;
+    uint64 public secretsVersion;
+
+    // mapping uinque bounty ids to their respective bounty structs
     mapping(bytes32 => Bounty) public bounties;
-
-
-    // --- Events ---
+    
+    // -- Events --
     event BountyCreated(
-        bytes32 indexed bountyId,
+        bytes32 indexed bountyID,
         string repoOwner,
         string repoName,
         string issueNumber,
@@ -50,92 +63,223 @@ contract BountyRegistry is ReentrancyGuard, Ownable {
         address token,
         uint256 amount
     );
+    event ClaimSubmitted (
+        bytes32 indexed bountyID,
+        address indexed claimer,
+        bytes32 indexed requestID,
+        string prNumber
+    );
+    event BountyStatusChanged(
+        bytes32 indexed bountyID,
+        BountyStatus newStatus
+    );
+    event BountyPaid(
+        bytes32 indexed bountyID,
+        address indexed claimer,
+        uint256 amount,
+        string githubUsername
+    );
+    event FundsRefunded(
+        bytes32 indexed bountyID,
+        address indexed issuer,
+        uint256 amount
+    );
 
-    event BountyStatusChanged(bytes32 indexed bountyId, BountyStatus newStatus);
-    event FundsWithdrawn(bytes32 indexed bountyId, address indexed recipient, uint256 amount);
+    // --Errors--
+    error Unauthorised();
+    error InvalidAmount();
+    error BountyExists();
+    error InvalidStatus();
+    error TimelockNotExpired();
 
-    // --- Constructor ---
-    constructor() Ownable(msg.sender) {}
+    // --Constructor--
+    constructor(address _oracle) Ownable(msg.sender) {
+        oracle = IOracle(_oracle);
+    }
 
+    // --Functions--
     /**
-     * @notice Funds a specific GitHub issue.
-     * @dev Sets state to OPEN.
+     * @notice Creates a bounty for a GitHub issue
+     * @param _token ERC20 token address (e.g., USDC, DAI)
+     * @param _amount Amount to deposit
+     * @param repoOwner GitHub repo and issue details
      */
-    function fundIssue (
-        address _token,
+    function fundIssue(
         uint256 _amount,
+        address _token,
         string memory repoOwner,
         string memory repoName,
-        string memory issueID
-    ) external nonReentrant {
-        // Basic requirements for bounty to be created
-        require(_token != address(0), "Token must exist!!");
-        require(_amount > 0, "Bounty must have value more than 0!!");
+        string memory issueNumber
+    ) external nonReentrant() {
+        // Checks that the issuer isn't broke
+        if (_token == address(0)) revert InvalidAmount();
+        if (_amount == 0) revert InvalidAmount();
+        
+        // Compute bountyID 
+        bytes32 bountyID = computeBountyID(repoOwner, repoName, issueNumber);
+        // Checks if their is an existing bounty
+        if(bounties[bountyID].amount != 0) revert BountyExists();
 
-        // Creates a unique bountyID for unique issue with given params
-        bytes32 bountyID = keccak256(abi.encodePacked(repoOwner, repoName, issueID));
-        require(bounties[bountyID].amount == 0, "Bounty for this issue already exists");
-
-        // Maps newly created bountyID to a Bounty struct to keep track
+        // Adds the newly created bounty
         bounties[bountyID] = Bounty({
             issuer: msg.sender,
             token: _token,
             amount: _amount,
             status: BountyStatus.OPEN,
             creationTime: block.timestamp,
-            prAuthor: ""
+            prClaimer: "",
+            activeRequestID: bytes32(0)
         });
 
-        // Transfers the amount from the maintainer to this contract.
+        // Transfers the bounty amount to this account
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
-        // Emits event for the newly funded bounty
-        emit BountyCreated(bountyID, repoOwner, repoName, issueID, msg.sender, _token, _amount);
+        emit BountyCreated(bountyID, repoOwner, repoName, issueNumber, msg.sender, _token, _amount);
+
+
     }
 
     /**
-     * @notice Allows the MAINTAINER to reclaim funds if the issue is ignored.
-     * @dev Lifecycle: OPEN -> REFUNDED.
-     * @param _bountyId The ID of the bounty to refund.
+     * @notice Contributor claims a bounty by submitting their PR for verification
+     * @param bountyID The bounty being claimed
+     * @param prNumber The Pull Request number as a string
+     * @param repoOwner GitHub owner details (must match bounty)
      */
-    function sweepFunds(bytes32 _bountyId) external nonReentrant {
-        Bounty storage bounty = bounties[_bountyId];
+    function claimBounty(
+        bytes32 bountyID, 
+        string memory prNumber, 
+        string memory repoOwner, 
+        string memory repoName, 
+        string memory issueNumber) external nonReentrant {
 
-        // 1. Access Control: Only the original funder can refund
-        require(msg.sender == bounty.issuer, "Only the issuer can sweep funds");
+            // Ease of reading create new var bounty which contains the details corresponding bountyID
+            Bounty storage bounty = bounties[bountyID];
 
-        // 2. State Check: Can only refund if still OPEN
-        require(bounty.status == BountyStatus.OPEN, "Bounty is not OPEN (may be verifying or paid)");
+            // Validation of bounty status and amount
+            if (bounty.amount == 0) revert InvalidStatus();
+            if (bounty.status != BountyStatus.OPEN) revert InvalidStatus();
+            
+            // Change the status of the current bounty
+            bounty.status = BountyStatus.VERIFYING;
+            emit BountyStatusChanged(bountyID, BountyStatus.VERIFYING);
 
-        // 3. Timelock Check: Must wait 6 months
-        require(block.timestamp >= bounty.creationTime + REFUND_TIMELOCK, "Timelock not yet expired");
+            // create a new list to pass for verifyContribution
+            string[] memory args = new string[](4);
+            args[0] = repoOwner;
+            args[1] = repoName;
+            args[2] = prNumber;
+            args[3] = issueNumber;
 
-        // 4. Update State (Effects)
+            // Creating request for oracle funciton call
+            bytes32 requestID = oracle.verifyContribution(bountyID, msg.sender, args, secretsSlotID, secretsVersion);
+            bounty.activeRequestID = requestID;
+
+            // Let the world know a claim has been made
+            emit ClaimSubmitted(bountyID, msg.sender, requestID, prNumber);
+    }
+
+    /**
+     * @notice Called by Oracle after verification completes
+     * @dev Only callable by the trusted Oracle contract
+     * @param bountyID The bounty that was verified
+     * @param receiver Address to receive funds
+     * @param githubUsername Verified GitHub username
+     */
+    function completeBountyPayout(
+        bytes32 bountyID,
+        string calldata githubUsername,
+        address receiver
+    ) external nonReentrant{
+        // Ease of reading create new var bounty which contains the details corresponding bountyID
+        Bounty memory bounty = bounties[bountyID];
+
+        // Checking authorisation and status of the bounty
+        if (msg.sender != address(oracle)) revert Unauthorised();
+        if(bounty.status != BountyStatus.VERIFYING) revert InvalidStatus();
+
+        // Changing state of the existing bounty
+        bounty.status = BountyStatus.PAID;
+        bounty.prClaimer = githubUsername;
+        emit BountyStatusChanged(bountyID, BountyStatus.PAID);
+
+        // Transfering the bounty to claimer
+        IERC20(bounty.token).safeTransfer(receiver, bounty.amount);
+        
+        // Bounty payment finally complete
+        emit BountyPaid(bountyID, receiver, bounty.amount, githubUsername);
+    }
+    /**
+     * @notice Issuer reclaims funds if bounty remains unclaimed after 6 months
+     * @param bountyID The bounty to refund
+     */
+    function seepFunds(bytes32 bountyID) external nonReentrant {
+        // Ease of reading create new var bounty which contains the details corresponding bountyID
+        Bounty memory bounty =  bounties[bountyID];
+
+        // Checking valid status and if enought time has passed also the auth of claimer
+        if (bounty.status != BountyStatus.OPEN) revert InvalidStatus();
+        if (bounty.creationTime <= bounty.creationTime + REFUND_TIMELOCK) revert TimelockNotExpired();
+        if (msg.sender != bounty.issuer) revert Unauthorised();
+
+        // Changing status of the bounty
         bounty.status = BountyStatus.REFUNDED;
-        emit BountyStatusChanged(_bountyId, BountyStatus.REFUNDED);
+        emit BountyStatusChanged(bountyID, BountyStatus.REFUNDED);
 
-        // 5. Transfer (Interactions)
+        // Tranferring funds(refunding) from this contract to issuer
         IERC20(bounty.token).safeTransfer(bounty.issuer, bounty.amount);
-        
-        emit FundsWithdrawn(_bountyId, bounty.issuer, bounty.amount);
+        emit FundsRefunded(bountyID, bounty.issuer, bounty.amount);
+
     }
+
+    // --Admin Function--
 
     /**
-     * @notice Placeholder for Week 3: This will trigger the Chainlink Oracle.
-     * @dev Lifecycle: OPEN -> VERIFYING.
+     * @notice Updates DON hosted secrets configuration
+     * @dev Call after running uploadSecrets.js
      */
-    function initiateClaim(bytes32 _bountyId) external {
-        Bounty storage bounty = bounties[_bountyId];
-        require(bounty.status == BountyStatus.OPEN, "Bounty not available");
-        
-        // This function will eventually interact with the oracle to change status
-        // For now, we simulate the state change lock.
-        bounty.status = BountyStatus.VERIFYING;
-        emit BountyStatusChanged(_bountyId, BountyStatus.VERIFYING);
+    function updateDONSecrets(uint8 slotID, uint64 version) external onlyOwner {
+        // update the don secrets
+        secretsSlotID = slotID;
+        secretsVersion = version;
     }
 
-    // Admin emergency function (different from user sweepFunds)
-    function emergencySweep(address _token, uint256 _amount) external onlyOwner {
-         IERC20(_token).safeTransfer(msg.sender, _amount);
+    // Update oracle
+    function updateOracle(address newOracle) external onlyOwner {
+        oracle = IOracle(newOracle);
+    }
+
+
+    // -- Helper/View Functions --
+
+    // Hashes certain parameters(repo owner, name, issue id) to create a unique bounty id
+    function computeBountyID(string memory _repoOwner, string memory _repoName, string memory _issueNumber) public pure returns (bytes32) {
+        bytes32 bountyID = keccak256(abi.encodePacked(_repoOwner, _repoName, _issueNumber));
+        return bountyID;
+    }
+
+    // Getting bounty details
+    function getBountyDetails(bytes32 bountyID)
+        external
+        view
+        returns (
+            address issuer,
+            address token,
+            uint256 amount,
+            BountyStatus status,
+            uint256 creationTime,
+            string memory prClaimer,
+            bytes32 activeRequestId
+        )
+    {
+        Bounty storage bounty = bounties[bountyID];
+        return (
+            bounty.issuer,
+            bounty.token,
+            bounty.amount,
+            bounty.status,
+            bounty.creationTime,
+            bounty.prClaimer,
+            bounty.activeRequestID
+        );
     }
 }
