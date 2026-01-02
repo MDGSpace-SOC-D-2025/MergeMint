@@ -135,8 +135,6 @@ contract BountyRegistry is Ownable, ReentrancyGuard {
         IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
         emit BountyCreated(bountyID, repoOwner, repoName, issueNumber, msg.sender, _token, _amount);
-
-
     }
 
     /**
@@ -182,16 +180,16 @@ contract BountyRegistry is Ownable, ReentrancyGuard {
      * @notice Called by Oracle after verification completes
      * @dev Only callable by the trusted Oracle contract
      * @param bountyID The bounty that was verified
-     * @param receiver Address to receive funds
      * @param githubUsername Verified GitHub username
+     * @param receiver Address to receive funds
      */
     function completeBountyPayout(
         bytes32 bountyID,
         string calldata githubUsername,
         address receiver
     ) external nonReentrant{
-        // Ease of reading create new var bounty which contains the details corresponding bountyID
-        Bounty memory bounty = bounties[bountyID];
+        // ✅ FIX: Use storage reference instead of memory
+        Bounty storage bounty = bounties[bountyID];
 
         // Checking authorisation and status of the bounty
         if (msg.sender != address(oracle)) revert Unauthorised();
@@ -208,18 +206,20 @@ contract BountyRegistry is Ownable, ReentrancyGuard {
         // Bounty payment finally complete
         emit BountyPaid(bountyID, receiver, bounty.amount, githubUsername);
     }
+    
     /**
      * @notice Issuer reclaims funds if bounty remains unclaimed after 6 months
      * @param bountyID The bounty to refund
      */
     function seepFunds(bytes32 bountyID) external nonReentrant {
-        // Ease of reading create new var bounty which contains the details corresponding bountyID
-        Bounty memory bounty =  bounties[bountyID];
+        // ✅ FIX: Use storage reference instead of memory
+        Bounty storage bounty = bounties[bountyID];
 
-        // Checking valid status and if enought time has passed also the auth of claimer
-        if (bounty.status != BountyStatus.OPEN) revert InvalidStatus();
-        if (bounty.creationTime <= bounty.creationTime + REFUND_TIMELOCK) revert TimelockNotExpired();
+        // ✅ FIX: Check authorization first, then status, then timelock
         if (msg.sender != bounty.issuer) revert Unauthorised();
+        if (bounty.status != BountyStatus.OPEN) revert InvalidStatus();
+        // ✅ FIX: Compare block.timestamp instead of creationTime with itself
+        if (block.timestamp <= bounty.creationTime + REFUND_TIMELOCK) revert TimelockNotExpired();
 
         // Changing status of the bounty
         bounty.status = BountyStatus.REFUNDED;
@@ -228,7 +228,6 @@ contract BountyRegistry is Ownable, ReentrancyGuard {
         // Tranferring funds(refunding) from this contract to issuer
         IERC20(bounty.token).safeTransfer(bounty.issuer, bounty.amount);
         emit FundsRefunded(bountyID, bounty.issuer, bounty.amount);
-
     }
 
     // --Admin Function--
@@ -247,7 +246,6 @@ contract BountyRegistry is Ownable, ReentrancyGuard {
     function updateOracle(address newOracle) external onlyOwner {
         oracle = IOracle(newOracle);
     }
-
 
     // -- Helper/View Functions --
 

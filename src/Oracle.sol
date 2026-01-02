@@ -9,8 +9,8 @@ import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/l
 interface IBountyRegistry {
     function completeBountyPayout(
         bytes32 bountyId,
-        address recipient,
-        string calldata githubUsername
+        string calldata githubUsername,
+        address recipient
     ) external;
 }
 
@@ -81,7 +81,7 @@ contract IntegratedOracle is FunctionsClient {
         donId = _donId;
         subscriptionId = _subId;
         sourceCode = _source;
-        bountyRegistry = IBountyRegistry(_bountyRegistry); // Letting this contract know bountyregistry exists
+        bountyRegistry = IBountyRegistry(_bountyRegistry);
         owner = msg.sender;
     }
 
@@ -160,10 +160,11 @@ contract IntegratedOracle is FunctionsClient {
 
         // If verification passed, trigger payout
         if (verified) {
+            // ✅ FIX: Correct parameter order - githubUsername before recipient
             bountyRegistry.completeBountyPayout(
                 request.bountyId,
-                request.claimant,
-                author
+                author,            // string githubUsername (2nd param)
+                request.claimant   // address recipient (3rd param)
             );
             
             emit PayoutTriggered(request.bountyId, request.claimant, author);
