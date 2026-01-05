@@ -1,0 +1,35 @@
+{
+  "name": "mergemint-monorepo",
+  "version": "1.0.0",
+  "description": "MergeMint: Decentralized Bounty Platform with Chainlink Functions",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "compile": "forge build",
+    "test:contracts": "forge test -vv",
+    "test:oracle": "node oracle/simulate.js",
+    "test:all": "npm run test:contracts && npm run test:oracle",
+    "deploy:local": "forge script script/Deploy.s.sol --fork-url http://localhost:8545 --broadcast"
+  },
+  "keywords": [
+    "solidity",
+    "foundry",
+    "chainlink",
+    "ethereum",
+    "web3"
+  ],
+  "author": "Vihaan Jain",
+  "license": "MIT",
+  "dependencies": {
+    "@chainlink/functions-toolkit": "^0.2.8",
+    "@openzeppelin/contracts": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^5.7.2"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "prettier-plugin-solidity": "^1.1.3"
+  }
+}
