@@ -1,0 +1,7 @@
+### **File: `.gitignore`**
+```
+node_modules/
+.env
+data/contexts/*.json
+*.log
+.DS_Store
