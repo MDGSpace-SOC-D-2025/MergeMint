@@ -107,7 +107,7 @@ class X402Middleware {
             recipient
         );
 
-        console.log(`💳 402 Payment Required for resource: ${resourceId}`);
+        console.log(`402 Payment Required for resource: ${resourceId}`);
 
         res.status(402).json({
             error: 'Payment Required',
@@ -214,7 +214,7 @@ class X402Middleware {
                 const resourceId = X402Middleware.extractResourceId(req, options);
 
                 // Log analytics data
-                console.log('📊 Payment Analytics:', {
+                console.log('Payment Analytics:', {
                     timestamp: new Date().toISOString(),
                     signer: session.signer,
                     resource: resourceId,
@@ -240,7 +240,7 @@ class X402Middleware {
                 return next();
             }
 
-            // This is a placeholder - you would implement actual balance checking
+            // This is a placeholder - we would implement actual balance checking
             // using ethers.js and a provider
 
             // const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
