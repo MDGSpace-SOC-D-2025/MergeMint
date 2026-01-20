@@ -160,7 +160,6 @@ contract IntegratedOracle is FunctionsClient {
 
         // If verification passed, trigger payout
         if (verified) {
-            // ✅ FIX: Correct parameter order - githubUsername before recipient
             bountyRegistry.completeBountyPayout(
                 request.bountyId,
                 author,            // string githubUsername (2nd param)
