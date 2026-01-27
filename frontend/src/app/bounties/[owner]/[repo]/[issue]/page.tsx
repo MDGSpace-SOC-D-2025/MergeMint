@@ -8,7 +8,7 @@ import { ConnectButton } from '@/components/ConnectButton';
 import { useWallet } from '@/contexts/WalletContext';
 import { useBounty } from '@/hooks/useBounty';
 import { useIssue } from '@/hooks/useGithub';
-import { usePayment } from '@/hooks/usePayment';
+// import { usePayment } from '@/hooks/usePayment';
 import { ClaimModal } from '@/components/ClaimModal';
 import {
   GitPullRequest,
@@ -55,7 +55,7 @@ export default function BountyDetailPage({
   const { owner, repo, issue } = resolvedParams;
 
   const { isConnected } = useWallet();
-  const { getBounty, claimBounty, isLoading: bountyLoading } = useBounty();
+  const { getBounty, claimBounty, watchBountyStatus, computeBountyId, isLoading: bountyLoading } = useBounty();
   const { issue: githubIssue, isLoading: issueLoading } = useIssue(owner, repo, issue);
   // const { fetchPaidContext, isProcessing: paymentLoading } = usePayment();
 
@@ -64,10 +64,41 @@ export default function BountyDetailPage({
   const [prNumber, setPrNumber] = useState('');
   const [claiming, setClaiming] = useState(false);
   const [context, setContext] = useState<any>(null);
+  const [statusNotification, setStatusNotification] = useState<{
+    type: 'rejected' | 'paid' | null;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     loadBounty();
   }, [owner, repo, issue]);
+
+  // Watch for real-time status changes (including rejections)
+  useEffect(() => {
+    if (!bounty?.id) return;
+
+    const unwatch = watchBountyStatus(bounty.id, (newStatus) => {
+      console.log('🔔 Bounty status changed:', newStatus);
+
+      // Check if bounty was rejected (went from VERIFYING back to OPEN)
+      if (bounty.status === 1 && newStatus === 0) {
+        setStatusNotification({
+          type: 'rejected',
+          message: 'Claim verification failed. The bounty is now open for new claims.'
+        });
+      } else if (newStatus === 2) {
+        setStatusNotification({
+          type: 'paid',
+          message: 'Bounty has been paid! Verification successful.'
+        });
+      }
+
+      // Reload bounty data
+      loadBounty();
+    });
+
+    return () => unwatch();
+  }, [bounty?.id, bounty?.status]);
 
   const loadBounty = async () => {
     console.log('📄 Detail page loading bounty for:', { owner, repo, issue });
@@ -162,6 +193,34 @@ export default function BountyDetailPage({
           Back to Bounties
         </Link>
 
+        {/* Status Notification Banner */}
+        {statusNotification && (
+          <div className={`mb-6 p-4 rounded-lg border flex items-center justify-between ${statusNotification.type === 'rejected'
+              ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+              : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+            }`}>
+            <div className="flex items-center gap-3">
+              {statusNotification.type === 'rejected' ? (
+                <AlertCircle className="w-5 h-5 text-orange-600" />
+              ) : (
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              )}
+              <p className={`text-sm font-medium ${statusNotification.type === 'rejected'
+                  ? 'text-orange-800 dark:text-orange-300'
+                  : 'text-green-800 dark:text-green-300'
+                }`}>
+                {statusNotification.message}
+              </p>
+            </div>
+            <button
+              onClick={() => setStatusNotification(null)}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8">
           {/* Header */}
           <div className="flex justify-between items-start mb-6">
@@ -249,7 +308,7 @@ export default function BountyDetailPage({
               </button>
             )}
 
-            
+
           </div>
 
           {/* Context Display */}

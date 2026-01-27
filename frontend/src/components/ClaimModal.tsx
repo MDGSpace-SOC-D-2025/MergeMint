@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useBounty } from '@/hooks/useBounty';
 import { useGitHub } from '@/hooks/useGithub';
 import { useWallet } from '@/contexts/WalletContext';
-import { 
-  X, 
-  Loader2, 
-  CheckCircle, 
+import {
+  X,
+  Loader2,
+  CheckCircle,
   AlertCircle,
   ExternalLink,
   Info
@@ -63,7 +63,7 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
         bounty.issueNumber,
         prNumber
       );
-      
+
       alert('Claim submitted! The Chainlink oracle will verify your PR.');
       onSuccess?.();
       onClose();
@@ -71,7 +71,7 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
       setPrStatus(null);
     } catch (error: any) {
       let message = 'Failed to submit claim';
-      
+
       if (error.message?.includes('user rejected')) {
         message = 'Transaction was rejected';
       } else if (error.message?.includes('insufficient funds')) {
@@ -79,7 +79,7 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
       } else if (error.message) {
         message = error.message;
       }
-      
+
       alert(message);
     }
   };
@@ -112,6 +112,7 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
                   <li>Your PR must be merged</li>
                   <li>PR description must include "Closes #{bounty.issueNumber}" or "Fixes #{bounty.issueNumber}"</li>
                   <li>Chainlink oracle will verify automatically</li>
+                  <li>If verification fails, the bounty returns to Open status</li>
                 </ul>
               </div>
             </div>
@@ -168,11 +169,10 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
 
           {/* PR Validation Status */}
           {prStatus && (
-            <div className={`border rounded-lg p-4 ${
-              prStatus.valid && prStatus.merged
+            <div className={`border rounded-lg p-4 ${prStatus.valid && prStatus.merged
                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                 : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-            }`}>
+              }`}>
               <div className="flex items-start gap-3">
                 {prStatus.valid && prStatus.merged ? (
                   <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
@@ -180,16 +180,15 @@ export function ClaimModal({ bounty, isOpen, onClose, onSuccess }: ClaimModalPro
                   <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
                 )}
                 <div className="flex-1">
-                  <p className={`font-medium ${
-                    prStatus.valid && prStatus.merged
+                  <p className={`font-medium ${prStatus.valid && prStatus.merged
                       ? 'text-green-800 dark:text-green-300'
                       : 'text-yellow-800 dark:text-yellow-300'
-                  }`}>
+                    }`}>
                     {prStatus.valid && prStatus.merged
                       ? '✓ PR is merged and valid'
                       : prStatus.valid && !prStatus.merged
-                      ? '⚠ PR exists but is not merged yet'
-                      : '✗ PR not found'
+                        ? '⚠ PR exists but is not merged yet'
+                        : '✗ PR not found'
                     }
                   </p>
                   {prStatus.author && (

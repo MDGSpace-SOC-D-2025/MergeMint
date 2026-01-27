@@ -38,7 +38,7 @@ export default function BountiesPage() {
         currentLatestBlock = await publicClient.getBlockNumber();
         setLatestBlock(currentLatestBlock);
       }
-      
+
       // Determine block range (100,000 blocks at a time)
       const BLOCKS_PER_LOAD = 100000n;
       let fromBlock: bigint;
@@ -47,16 +47,16 @@ export default function BountiesPage() {
       if (isInitialLoad || !oldestBlock) {
         // First load: get most recent 100,000 blocks
         toBlock = currentLatestBlock;
-        fromBlock = currentLatestBlock > BLOCKS_PER_LOAD 
-          ? currentLatestBlock - BLOCKS_PER_LOAD 
+        fromBlock = currentLatestBlock > BLOCKS_PER_LOAD
+          ? currentLatestBlock - BLOCKS_PER_LOAD
           : 0n;
       } else {
         // Load more: get previous 100,000 blocks
         toBlock = oldestBlock - 1n;
-        fromBlock = toBlock > BLOCKS_PER_LOAD 
-          ? toBlock - BLOCKS_PER_LOAD 
+        fromBlock = toBlock > BLOCKS_PER_LOAD
+          ? toBlock - BLOCKS_PER_LOAD
           : 0n;
-        
+
         if (fromBlock < 0n) {
           fromBlock = 0n;
         }
@@ -67,7 +67,7 @@ export default function BountiesPage() {
         setHasMore(false);
       }
 
-      console.log(`📊 Loading bounties from block ${fromBlock} to ${toBlock} (${toBlock - fromBlock} blocks)`);
+      console.log(`Loading bounties from block ${fromBlock} to ${toBlock} (${toBlock - fromBlock} blocks)`);
 
       // Update total blocks scanned
       const blocksInThisLoad = toBlock - fromBlock;
@@ -93,7 +93,7 @@ export default function BountiesPage() {
         toBlock: toBlock
       });
 
-      console.log(`✅ Found ${logs.length} bounty events`);
+      console.log(`Found ${logs.length} bounty events`);
 
       // Fetch full details for each bounty
       const bountyPromises = logs.map(async (log) => {
@@ -134,6 +134,7 @@ export default function BountiesPage() {
         setBounties(loadedBounties);
       } else {
         // Append older bounties (deduplicate by ID)
+        // functional update pattern of useState
         setBounties(prev => {
           const existingIds = new Set(prev.map(b => b.id));
           const newBounties = loadedBounties.filter(b => !existingIds.has(b.id));
@@ -147,10 +148,10 @@ export default function BountiesPage() {
       // Check if we've reached genesis
       if (fromBlock === 0n) {
         setHasMore(false);
-        console.log('📍 Reached genesis block - no more bounties to load');
+        console.log('Reached genesis block - no more bounties to load');
       }
 
-      console.log(`📦 Total bounties loaded: ${isInitialLoad ? loadedBounties.length : bounties.length + loadedBounties.length}`);
+      console.log(`Total bounties loaded: ${isInitialLoad ? loadedBounties.length : bounties.length + loadedBounties.length}`);
 
     } catch (error) {
       console.error('Error loading bounties:', error);
@@ -222,10 +223,10 @@ export default function BountiesPage() {
                        disabled:opacity-50 disabled:cursor-not-allowed"
               title="Refresh bounties"
             >
-              <svg 
+              <svg
                 className={`w-5 h-5 text-gray-600 dark:text-gray-400 ${isLoading ? 'animate-spin' : ''}`}
-                fill="none" 
-                stroke="currentColor" 
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

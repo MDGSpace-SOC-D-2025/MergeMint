@@ -10,6 +10,8 @@ contract MockBountyRegistry {
     address public lastPayoutRecipient;
     string public lastPayoutGithubUsername;
     uint256 public payoutCallCount;
+    bytes32 public lastRejectedBountyId;
+    uint256 public rejectCallCount;
     bool public shouldRevert;
     
     function completeBountyPayout(
@@ -22,6 +24,12 @@ contract MockBountyRegistry {
         lastPayoutRecipient = recipient;
         lastPayoutGithubUsername = githubUsername;
         payoutCallCount++;
+    }
+    
+    function rejectBountyClaim(bytes32 bountyId) external {
+        require(!shouldRevert, "MockBountyRegistry: Revert requested");
+        lastRejectedBountyId = bountyId;
+        rejectCallCount++;
     }
     
     function setShouldRevert(bool _shouldRevert) external {
@@ -270,6 +278,10 @@ contract IntegratedOracleTest is Test {
         (, , bool active) = oracle.requests(requestId);
         assertFalse(active);
         
+        // Verify rejectBountyClaim was called
+        assertEq(bountyRegistry.rejectCallCount(), 1);
+        assertEq(bountyRegistry.lastRejectedBountyId(), bountyId);
+        
         // Verify NO payout was triggered
         assertEq(bountyRegistry.payoutCallCount(), 0);
     }
@@ -299,6 +311,10 @@ contract IntegratedOracleTest is Test {
         // Verify request is deactivated
         (, , bool active) = oracle.requests(requestId);
         assertFalse(active);
+        
+        // Verify rejectBountyClaim was called
+        assertEq(bountyRegistry.rejectCallCount(), 1);
+        assertEq(bountyRegistry.lastRejectedBountyId(), bountyId);
         
         // Verify NO payout
         assertEq(bountyRegistry.payoutCallCount(), 0);

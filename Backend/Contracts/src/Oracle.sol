@@ -12,6 +12,8 @@ interface IBountyRegistry {
         string calldata githubUsername,
         address recipient
     ) external;
+
+    function rejectBountyClaim(bytes32 bountyId) external;
 }
 
 contract IntegratedOracle is FunctionsClient {
@@ -149,7 +151,8 @@ contract IntegratedOracle is FunctionsClient {
         // Handle script errors
         if (err.length > 0) {
             emit VerificationComplete(requestId, request.bountyId, false, "SCRIPT_ERROR");
-            // Bounty remains in VERIFYING state
+            // Revert bounty back to OPEN state
+            bountyRegistry.rejectBountyClaim(request.bountyId);
             return;
         }
 
@@ -167,8 +170,10 @@ contract IntegratedOracle is FunctionsClient {
             );
             
             emit PayoutTriggered(request.bountyId, request.claimant, author);
+        } else {
+            // If verification failed, revert bounty back to OPEN state
+            bountyRegistry.rejectBountyClaim(request.bountyId);
         }
-        // If verification failed, bounty returns to OPEN state (handled in Registry)
     }
 
     // --- Admin Functions ---

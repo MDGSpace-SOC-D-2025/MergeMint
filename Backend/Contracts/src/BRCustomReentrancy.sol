@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 // --Imports--
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // -- Interface --
@@ -18,7 +17,19 @@ interface IOracle {
     ) external returns (bytes32 requestId);
 }
 
-contract BountyRegistry is Ownable, ReentrancyGuard {
+abstract contract CustomReentrancyGuard {
+    bool private locked;
+
+    modifier nonReentrant() {
+        require(!locked, "ReentrancyGuard: reentrant call");
+
+        locked = true;
+        _;
+        locked = false;
+    }
+}
+
+contract BountyRegistry is Ownable, CustomReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // -- State Variable --
