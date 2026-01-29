@@ -49,6 +49,7 @@ function getStatusLabel(status: number): string {
 export default function BountyDetailPage({
   params,
 }: {
+  // updated to promises in next 15
   params: Promise<{ owner: string; repo: string; issue: string }>;
 }) {
   const resolvedParams = use(params);
@@ -75,10 +76,11 @@ export default function BountyDetailPage({
 
   // Watch for real-time status changes (including rejections)
   useEffect(() => {
+    // optional chaining
     if (!bounty?.id) return;
 
     const unwatch = watchBountyStatus(bounty.id, (newStatus) => {
-      console.log('🔔 Bounty status changed:', newStatus);
+      console.log('Bounty status changed:', newStatus); 
 
       // Check if bounty was rejected (went from VERIFYING back to OPEN)
       if (bounty.status === 1 && newStatus === 0) {
@@ -101,9 +103,9 @@ export default function BountyDetailPage({
   }, [bounty?.id, bounty?.status]);
 
   const loadBounty = async () => {
-    console.log('📄 Detail page loading bounty for:', { owner, repo, issue });
+    console.log('Detail page loading bounty for:', { owner, repo, issue });
     const bountyData = await getBounty(owner, repo, issue);
-    console.log('📊 Detail page received bounty:', bountyData);
+    console.log('Detail page received bounty:', bountyData);
     setBounty(bountyData);
   };
 
