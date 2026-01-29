@@ -13,14 +13,6 @@ MergeMint is a decentralized bounty platform that empowers open-source developme
 
 
 
-## Screenshots
-
-![Dashboard](./screenshots/Screenshot%20from%202026-01-29%2021-20-38.png)
-![Create Bounty](./screenshots/Screenshot%20from%202026-01-29%2021-20-47.png)
-![Bounty Details](./screenshots/Screenshot%20from%202026-01-29%2021-20-54.png)
-![Wallet Connection](./screenshots/Screenshot%20from%202026-01-29%2021-21-08.png)
-![Transaction Confirmation](./screenshots/Screenshot%20from%202026-01-29%2021-21-15.png)
-
 ## Tech Stack
 
 ### Frontend
@@ -107,6 +99,16 @@ ETHERSCAN_API_KEY=...
 3.  **Contribute**: Developers solve the issue and submit a Pull Request.
 4.  **Claim**: Once the PR is merged, the contributor claims the bounty via the UI.
 5.  **Verify & Pay**: The system verifies the merge via Chainlink and automatically transfers the funds.
+
+
+
+## Screenshots
+
+![Dashboard](./screenshots/Screenshot%20from%202026-01-29%2021-20-38.png)
+![Create Bounty](./screenshots/Screenshot%20from%202026-01-29%2021-20-47.png)
+![Bounty Details](./screenshots/Screenshot%20from%202026-01-29%2021-20-54.png)
+![Wallet Connection](./screenshots/Screenshot%20from%202026-01-29%2021-21-08.png)
+![Transaction Confirmation](./screenshots/Screenshot%20from%202026-01-29%2021-21-15.png)
 
 ## Known Issues
 
