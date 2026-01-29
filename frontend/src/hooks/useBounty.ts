@@ -38,10 +38,10 @@ export function useBounty() {
     issueNumber: string
   ): Promise<Bounty | null> => {
     try {
-      console.log('🔍 getBounty called with:', { repoOwner, repoName, issueNumber });
+      console.log('getBounty called with:', { repoOwner, repoName, issueNumber });
       
       const bountyId = computeBountyId(repoOwner, repoName, issueNumber);
-      console.log('💾 Computed bountyId:', bountyId);
+      console.log('Computed bountyId:', bountyId);
 
       const result = await publicClient.readContract({
         address: CONTRACTS.sepolia.BountyRegistry,
@@ -51,15 +51,15 @@ export function useBounty() {
       });
 
       const [issuer, token, amount, status, creationTime, prClaimer, activeRequestId] = result;
-      console.log('📊 Contract returned:', { amount: amount.toString(), status });
+      console.log('Contract returned:', { amount: amount.toString(), status });
 
       // Return null if bounty doesn't exist
       if (amount === 0n) {
-        console.warn('⚠️ Bounty not found - amount is 0n');
+        console.warn('Bounty not found - amount is 0n');
         return null;
       }
 
-      console.log('✅ Bounty found successfully');
+      console.log('Bounty found successfully');
 
       return {
         id: bountyId,
@@ -75,7 +75,7 @@ export function useBounty() {
         issueNumber
       };
     } catch (error) {
-      console.error('❌ Error fetching bounty:', error);
+      console.error('Error fetching bounty:', error);
       return null;
     }
   };

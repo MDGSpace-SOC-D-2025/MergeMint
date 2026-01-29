@@ -39,6 +39,7 @@ export function BountyForm({ onSuccess }: { onSuccess?: () => void }) {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
+    // prevents default form submission behavior
     e.preventDefault();
     
     if (!parsedData) return;

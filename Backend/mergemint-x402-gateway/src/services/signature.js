@@ -17,7 +17,6 @@ class SignatureService {
                 paymentData
             );
 
-            // Recover the signer address from the signature
             const signerAddress = ethers.recoverAddress(digest, signature);
 
             return signerAddress;
